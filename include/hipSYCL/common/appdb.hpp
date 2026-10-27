@@ -195,6 +195,10 @@ public:
   /// Does nothing if the lock cannot be acquired.
   void sync_to_disk();
 
+  /// Reads entries that other processes stored in the database file,
+  /// keeping the entries this process added or changed.
+  void reload_from_disk();
+
 private:
   
   struct write_lock {

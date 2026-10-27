@@ -618,17 +618,24 @@ bool kernel_cache::persistent_cache_lookup(code_object_id id_of_binary,
                                            std::string &out) const {
   std::string filename;
 
-  bool filename_lookup_succeeded =
-      common::filesystem::persistent_storage::get()
-          .get_this_app_db()
-          .read_access([&](const common::db::appdb_data &appdb) {
-            auto binary = appdb.binaries.find(id_of_binary);
-            if (binary == appdb.binaries.end())
-              return false;
+  auto &db = common::filesystem::persistent_storage::get().get_this_app_db();
+  auto find_filename = [&]() {
+    return db.read_access([&](const common::db::appdb_data &appdb) {
+      auto binary = appdb.binaries.find(id_of_binary);
+      if (binary == appdb.binaries.end())
+        return false;
 
-            filename = binary->second.jit_cache_filename;
-            return true;
-          });
+      filename = binary->second.jit_cache_filename;
+      return true;
+    });
+  };
+
+  bool filename_lookup_succeeded = find_filename();
+  if(!filename_lookup_succeeded) {
+    // Another process may have stored this binary since the database was read.
+    db.reload_from_disk();
+    filename_lookup_succeeded = find_filename();
+  }
 
   if(!filename_lookup_succeeded)
     return false;

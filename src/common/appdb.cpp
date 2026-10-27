@@ -192,4 +192,22 @@ void appdb::sync_to_disk() {
   _was_modified = false;
 }
 
+void appdb::reload_from_disk() {
+  write_lock lock {_lock};
+
+  appdb_data disk;
+  if(!read_appdb_file(_db_path, disk))
+    return;
+
+  appdb_data merged = disk;
+  merge_changes(_data.kernels, _on_disk.kernels, merged.kernels);
+  merge_changes(_data.binaries, _on_disk.binaries, merged.binaries);
+  merge_changes(_data.scheduling_objects, _on_disk.scheduling_objects,
+                merged.scheduling_objects);
+  merged.content_version = _data.content_version;
+
+  _on_disk = std::move(disk);
+  _data = std::move(merged);
+}
+
 }
