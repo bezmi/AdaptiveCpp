@@ -668,11 +668,13 @@ void kernel_cache::persistent_cache_store(code_object_id id_of_binary,
         << filename << std::endl;
   }
 
-  common::filesystem::persistent_storage::get()
-      .get_this_app_db()
-      .read_write_access([&](common::db::appdb_data &appdb) {
-        appdb.binaries[id_of_binary].jit_cache_filename = filename;
-      });
+  auto &db = common::filesystem::persistent_storage::get().get_this_app_db();
+  db.read_write_access([&](common::db::appdb_data &appdb) {
+    appdb.binaries[id_of_binary].jit_cache_filename = filename;
+  });
+  // Store the entry now so that it survives if the process does not exit
+  // normally.
+  db.sync_to_disk();
 }
 
 } // rt
