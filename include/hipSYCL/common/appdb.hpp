@@ -38,6 +38,14 @@ struct kernel_arg_value_statistics {
     pack(count);
     pack(last_used);
   }
+
+  bool operator==(const kernel_arg_value_statistics &other) const {
+    return value == other.value && count == other.count &&
+           last_used == other.last_used;
+  }
+  bool operator!=(const kernel_arg_value_statistics &other) const {
+    return !(*this == other);
+  }
 };
 
 struct kernel_arg_entry {
@@ -52,6 +60,14 @@ struct kernel_arg_entry {
     pack(was_specialized);
   }
 
+  bool operator==(const kernel_arg_entry &other) const {
+    return common_values == other.common_values &&
+           was_specialized == other.was_specialized;
+  }
+  bool operator!=(const kernel_arg_entry &other) const {
+    return !(*this == other);
+  }
+
   ACPP_COMMON_EXPORT void dump(std::ostream& ostr, int indentation_level=0) const;
 };
 
@@ -64,6 +80,17 @@ struct kernel_entry {
     pack(retained_argument_indices);
     pack(is_free_of_indirect_access);
     pack(first_iads_invocation_run);
+  }
+
+  bool operator==(const kernel_entry &other) const {
+    return kernel_args == other.kernel_args &&
+           num_registered_invocations == other.num_registered_invocations &&
+           retained_argument_indices == other.retained_argument_indices &&
+           is_free_of_indirect_access == other.is_free_of_indirect_access &&
+           first_iads_invocation_run == other.first_iads_invocation_run;
+  }
+  bool operator!=(const kernel_entry &other) const {
+    return !(*this == other);
   }
 
   ACPP_COMMON_EXPORT void dump(std::ostream& ostr, int indentation_level=0) const;
@@ -88,6 +115,13 @@ struct binary_entry {
     pack(jit_cache_filename);
   }
 
+  bool operator==(const binary_entry &other) const {
+    return jit_cache_filename == other.jit_cache_filename;
+  }
+  bool operator!=(const binary_entry &other) const {
+    return !(*this == other);
+  }
+
   ACPP_COMMON_EXPORT void dump(std::ostream& ostr, int indentation_level=0) const;
 };
 
@@ -97,6 +131,13 @@ struct scheduling_object_entry {
   template<class T>
   void pack(T &pack) {
     pack(is_free_of_indirect_access);
+  }
+
+  bool operator==(const scheduling_object_entry &other) const {
+    return is_free_of_indirect_access == other.is_free_of_indirect_access;
+  }
+  bool operator!=(const scheduling_object_entry &other) const {
+    return !(*this == other);
   }
 
   ACPP_COMMON_EXPORT void dump(std::ostream& ostr, int indentation_level=0) const;
