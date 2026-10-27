@@ -150,19 +150,16 @@ appdb::~appdb() {
   sync_to_disk();
 }
 
-void appdb::sync_to_disk() {
+bool appdb::sync_to_disk() {
   write_lock lock {_lock};
   if(!_was_modified)
-    return;
+    return true;
 
   filesystem::file_lock db_file_lock{_db_path + ".lock",
                                      filesystem::file_lock::mode::exclusive,
                                      std::chrono::seconds{30}};
-  if(!db_file_lock.is_locked()) {
-    HIPSYCL_DEBUG_WARNING << "appdb: Could not lock " << _db_path
-                          << ", changes are not stored" << std::endl;
-    return;
-  }
+  if(!db_file_lock.is_locked())
+    return false;
 
   appdb_data merged;
   read_appdb_file(_db_path, merged);
@@ -180,16 +177,14 @@ void appdb::sync_to_disk() {
   data_string.resize(data.size());
   std::memcpy(data_string.data(), data.data(), data.size());
 
-  if(!common::filesystem::atomic_write(_db_path, data_string)) {
-    HIPSYCL_DEBUG_WARNING << "appdb: Could not write " << _db_path
-                          << ", changes are not stored" << std::endl;
-    return;
-  }
+  if(!common::filesystem::atomic_write(_db_path, data_string))
+    return false;
 
   _on_disk = merged;
   _data = std::move(merged);
   _data.content_version = this_run;
   _was_modified = false;
+  return true;
 }
 
 void appdb::reload_from_disk() {

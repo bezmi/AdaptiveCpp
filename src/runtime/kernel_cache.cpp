@@ -681,7 +681,13 @@ void kernel_cache::persistent_cache_store(code_object_id id_of_binary,
   });
   // Store the entry now so that it survives if the process does not exit
   // normally.
-  db.sync_to_disk();
+  if(!db.sync_to_disk()) {
+    HIPSYCL_DEBUG_WARNING
+        << "kernel_cache: Could not update the application database; "
+           "binary with id "
+        << kernel_configuration::to_string(id_of_binary)
+        << " is stored only for this process" << std::endl;
+  }
 }
 
 } // rt
