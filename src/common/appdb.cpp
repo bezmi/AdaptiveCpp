@@ -12,6 +12,9 @@
 #include "hipSYCL/common/appdb.hpp"
 #include "hipSYCL/common/filesystem.hpp"
 #include "hipSYCL/runtime/kernel_configuration.hpp"
+#include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <fstream>
 #include <type_traits>
 
@@ -39,6 +42,32 @@ void print_array(std::ostream &ostr, const std::string &name, const ArrayT &a,
                          indentation_level + 1);
       a[i].dump(ostr, indentation_level + 2);
     }
+  }
+}
+
+bool read_appdb_file(const std::string &path, appdb_data &out) {
+  std::ifstream file{path, std::ios::in | std::ios::binary | std::ios::ate};
+  if(!file.is_open())
+    return false;
+  std::streamsize file_size = file.tellg();
+
+  file.seekg(0, std::ios::beg);
+
+  std::vector<uint8_t> file_content;
+  file_content.resize(file_size);
+  file.read(reinterpret_cast<char *>(file_content.data()), file_size);
+
+  out = msgpack::unpack<appdb_data>(file_content);
+  return true;
+}
+
+// Copies entries of current that are new or differ from on_disk into out.
+template <class Map>
+void merge_changes(const Map &current, const Map &on_disk, Map &out) {
+  for(const auto& entry : current) {
+    auto it = on_disk.find(entry.first);
+    if(it == on_disk.end() || it->second != entry.second)
+      out[entry.first] = entry.second;
   }
 }
 }
@@ -111,36 +140,56 @@ void appdb_data::dump(std::ostream& ostr, int indentation_level) const {
   }
 }
 
-appdb::appdb(const std::string& db_path) 
+appdb::appdb(const std::string& db_path)
 : _db_path{db_path}, _lock{0}, _was_modified{false} {
-
-  if(filesystem::exists(db_path)) {
-    std::ifstream file{_db_path, std::ios::in | std::ios::binary | std::ios::ate};
-    if (!file.is_open())
-      return;
-    std::streamsize file_size = file.tellg();
-    
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> file_content;
-    file_content.resize(file_size);
-    file.read(reinterpret_cast<char *>(file_content.data()), file_size);
-
-    _data = msgpack::unpack<appdb_data>(file_content);
-  }
+  read_appdb_file(_db_path, _data);
+  _on_disk = _data;
 }
 
 appdb::~appdb() {
-  if(_was_modified) {
-    ++_data.content_version;
+  sync_to_disk();
+}
 
-    auto data = msgpack::pack(_data);
-    std::string data_string;
-    data_string.resize(data.size());
-    std::memcpy(data_string.data(), data.data(), data.size());
+void appdb::sync_to_disk() {
+  write_lock lock {_lock};
+  if(!_was_modified)
+    return;
 
-    common::filesystem::atomic_write(_db_path, data_string);
+  filesystem::file_lock db_file_lock{_db_path + ".lock",
+                                     filesystem::file_lock::mode::exclusive,
+                                     std::chrono::seconds{30}};
+  if(!db_file_lock.is_locked()) {
+    HIPSYCL_DEBUG_WARNING << "appdb: Could not lock " << _db_path
+                          << ", changes are not stored" << std::endl;
+    return;
   }
+
+  appdb_data merged;
+  read_appdb_file(_db_path, merged);
+  merge_changes(_data.kernels, _on_disk.kernels, merged.kernels);
+  merge_changes(_data.binaries, _on_disk.binaries, merged.binaries);
+  merge_changes(_data.scheduling_objects, _on_disk.scheduling_objects,
+                merged.scheduling_objects);
+  // content_version counts application runs; this process keeps the
+  // value it started with.
+  std::size_t this_run = _data.content_version;
+  merged.content_version = std::max(merged.content_version, this_run + 1);
+
+  auto data = msgpack::pack(merged);
+  std::string data_string;
+  data_string.resize(data.size());
+  std::memcpy(data_string.data(), data.data(), data.size());
+
+  if(!common::filesystem::atomic_write(_db_path, data_string)) {
+    HIPSYCL_DEBUG_WARNING << "appdb: Could not write " << _db_path
+                          << ", changes are not stored" << std::endl;
+    return;
+  }
+
+  _on_disk = merged;
+  _data = std::move(merged);
+  _data.content_version = this_run;
+  _was_modified = false;
 }
 
 }

@@ -190,6 +190,11 @@ public:
     return handler(_data);
   }
 
+  /// Merges the entries this process added or changed into the database
+  /// file under an inter-process lock, then reloads the merged content.
+  /// Does nothing if the lock cannot be acquired.
+  void sync_to_disk();
+
 private:
   
   struct write_lock {
@@ -236,6 +241,8 @@ private:
   std::string _db_path;
 
   appdb_data _data;
+  // Content of the database file when it was last read or written
+  appdb_data _on_disk;
 };
 
 
