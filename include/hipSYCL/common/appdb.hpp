@@ -192,8 +192,9 @@ public:
 
   /// Merges the entries this process added or changed into the database
   /// file under an inter-process lock, then reloads the merged content.
-  /// Does nothing if the lock cannot be acquired.
-  void sync_to_disk();
+  /// Returns false if the file could not be locked or written; the changes
+  /// then stay in memory only.
+  bool sync_to_disk();
 
   /// Reads entries that other processes stored in the database file,
   /// keeping the entries this process added or changed.
