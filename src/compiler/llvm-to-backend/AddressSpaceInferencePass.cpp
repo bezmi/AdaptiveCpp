@@ -126,6 +126,9 @@ llvm::PreservedAnalyses AddressSpaceInferencePass::run(llvm::Module &M,
                                << AI->getAddressSpace() << " when it should be in AS "
                                << AllocaAddrSpace << ", fixing.\n";
             auto *NewAI = new llvm::AllocaInst{AI->getAllocatedType(), AllocaAddrSpace, "", llvmutils::makeInsertionPoint(AI)};
+            // Keep the original alignment: users (e.g. memset/memcpy) still
+            // assume it, and the target's default may be smaller.
+            NewAI->setAlignment(AI->getAlign());
             auto* ASCastInst = new llvm::AddrSpaceCastInst{NewAI, AI->getType(), "", llvmutils::makeInsertionPoint(AI)};
 
             // llvm.lifetime intrinsics don't like addrspacecasts,
