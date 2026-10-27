@@ -19,11 +19,15 @@
 #include <fstream>
 #include <memory>
 #include <random>
+#include <thread>
 #include <cassert>
+#include <cerrno>
 
 #ifndef _WIN32
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <pwd.h>
 #include <limits.h>
@@ -198,6 +202,66 @@ bool remove(const std::string &filename) {
     return fs::remove(filename);
   } catch (const fs::filesystem_error &err) {}
   return false;
+}
+
+file_lock::file_lock(const std::string &path, mode m,
+                     std::chrono::milliseconds timeout) {
+  auto deadline = std::chrono::steady_clock::now() + timeout;
+#ifndef _WIN32
+  _fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+  if(_fd < 0)
+    return;
+
+  int op = (m == mode::exclusive ? LOCK_EX : LOCK_SH) | LOCK_NB;
+  while(flock(_fd, op) != 0) {
+    if(errno != EWOULDBLOCK && errno != EINTR)
+      return;
+    if(std::chrono::steady_clock::now() >= deadline)
+      return;
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+  }
+  _locked = true;
+#else
+  HANDLE h = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                         nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if(h == INVALID_HANDLE_VALUE)
+    return;
+  _handle = h;
+
+  DWORD flags = LOCKFILE_FAIL_IMMEDIATELY;
+  if(m == mode::exclusive)
+    flags |= LOCKFILE_EXCLUSIVE_LOCK;
+  for(;;) {
+    OVERLAPPED ov{};
+    if(LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov))
+      break;
+    if(GetLastError() != ERROR_LOCK_VIOLATION)
+      return;
+    if(std::chrono::steady_clock::now() >= deadline)
+      return;
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+  }
+  _locked = true;
+#endif
+}
+
+file_lock::~file_lock() {
+#ifndef _WIN32
+  if(_fd >= 0) {
+    if(_locked)
+      flock(_fd, LOCK_UN);
+    close(_fd);
+  }
+#else
+  if(_handle) {
+    if(_locked) {
+      OVERLAPPED ov{};
+      UnlockFileEx(static_cast<HANDLE>(_handle), 0, MAXDWORD, MAXDWORD, &ov);
+    }
+    CloseHandle(static_cast<HANDLE>(_handle));
+  }
+#endif
 }
 
 persistent_storage &persistent_storage::get() {

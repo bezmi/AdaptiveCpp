@@ -11,6 +11,7 @@
 #ifndef HIPSYCL_COMMON_FILESYSTEM_HPP
 #define HIPSYCL_COMMON_FILESYSTEM_HPP
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -55,6 +56,30 @@ ACPP_COMMON_EXPORT bool atomic_write(const std::string& filename, const std::str
 
 /// Removes a file, returns true if successful.
 ACPP_COMMON_EXPORT bool remove(const std::string &filename);
+
+/// Advisory inter-process lock on a file, which is created if needed.
+/// Waits up to \c timeout for the lock; check is_locked() before relying on it.
+class ACPP_COMMON_EXPORT file_lock {
+public:
+  enum class mode { shared, exclusive };
+
+  file_lock(const std::string &path, mode m,
+            std::chrono::milliseconds timeout);
+  ~file_lock();
+
+  file_lock(const file_lock &) = delete;
+  file_lock &operator=(const file_lock &) = delete;
+
+  bool is_locked() const { return _locked; }
+
+private:
+  bool _locked = false;
+#ifndef _WIN32
+  int _fd = -1;
+#else
+  void *_handle = nullptr;
+#endif
+};
 
 class ACPP_COMMON_EXPORT persistent_storage {
 public:
