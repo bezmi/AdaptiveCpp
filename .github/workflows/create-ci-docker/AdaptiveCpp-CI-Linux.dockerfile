@@ -13,7 +13,7 @@ ARG CUDA_DRIVER_VERSION="450.51.05"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get -u update \
+RUN apt-get -o Acquire::Retries=5 -o Acquire::http::No-Cache=true -u update \
     && apt-get -qq upgrade \
     # Setup Kitware repo for the latest cmake available:
     && apt-get -qq install \
@@ -22,7 +22,7 @@ RUN apt-get -u update \
         | gpg --dearmor - \
         | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null \
     && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main' \
-    && apt-get -u update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::http::No-Cache=true -u update \
     && apt-get -qq upgrade \
     && apt-get -qq install cmake \
         ca-certificates \
@@ -81,7 +81,7 @@ RUN <<EOF
     wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
     echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/${ROCM_VERSION} jammy main" | tee /etc/apt/sources.list.d/rocm.list
     printf 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' | tee /etc/apt/preferences.d/rocm-pin-600
-    apt-get update
+    apt-get -o Acquire::Retries=5 -o Acquire::http::No-Cache=true update
     apt-get install -y rocm-dev
     rm -rf /var/lib/apt/lists/*
 EOF
@@ -114,5 +114,4 @@ ENV PATH="$PATH:/usr/local/cuda/bin"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:/usr/local/cuda/lib64"
 ENV CC=clang-${LLVM_VERSION}
 ENV CXX=clang++-${LLVM_VERSION}
-
 
